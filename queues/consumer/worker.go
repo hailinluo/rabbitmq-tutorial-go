@@ -1,8 +1,10 @@
-package main
+package consumer
 
 import (
+	"bytes"
 	"log"
 	"github.com/streadway/amqp"
+	"time"
 )
 
 func main() {
@@ -18,8 +20,8 @@ func main() {
 
 	// 获取消息的队列
 	q, err := ch.QueueDeclare(
-		"hello", // name
-		false,   // durable
+		"task_queue", // name
+		true,   // 持久化
 		false,   // delete when usused
 		false,   // exclusive
 		false,   // no-wait
@@ -27,11 +29,18 @@ func main() {
 	)
 	failOnError(err, "Failed to declare a queue")
 
+	err = ch.Qos(
+		1,     // prefetch count   保持每个消费者只有一条未确认消息
+		0,      // prefetch size
+		false,  // global
+	)
+	failOnError(err, "Failed to set QoS")
+
 	//
 	msgs, err := ch.Consume(
 		q.Name, // queue
 		"",     // consumer
-		true,   // 自动发送消息确认
+		false,   // 不自动发送消息确认
 		false,  // exclusive
 		false,  // no-local
 		false,  // no-wait
@@ -44,6 +53,11 @@ func main() {
 	go func() {
 		for d := range msgs {
 			log.Printf("Received a message: %s", d.Body)
+			dot_count := bytes.Count(d.Body, []byte("."))
+			t := time.Duration(dot_count)
+			time.Sleep(t * time.Second)
+			log.Printf("Done")
+			d.Ack(false)   // 发送消息确认
 		}
 	}()
 
